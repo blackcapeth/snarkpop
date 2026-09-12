@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SNARKPOP — catch the shielded signals</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #0a0c10;
+    color: #f4f6f8;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+  }
+  .wrap { width: 100%; max-width: 460px; }
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  h1 {
+    font-size: 22px;
+    font-weight: 800;
+    margin: 0;
+    letter-spacing: -0.3px;
+    background: linear-gradient(90deg,#2dd4bf,#a78bfa,#f472b6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .stat { text-align: right; }
+  .stat .label { font-size: 10px; color: #7a8699; text-transform: uppercase; letter-spacing: 1px; }
+  .stat .value { font-size: 20px; font-weight: 800; color: #2dd4bf; line-height: 1; }
+  .subtitle { font-size: 13px; color: #8b96a8; margin: 0 0 16px 0; line-height: 1.5; }
+  .console {
+    background: #12151c;
+    border: 1px solid #232a35;
+    border-radius: 16px;
+    padding: 18px;
+  }
+  .timerbar { height: 6px; background: #1c222c; border-radius: 4px; overflow: hidden; margin-bottom: 16px; }
+  .timerbar-fill {
+    height: 100%;
+    background: linear-gradient(90deg,#2dd4bf,#a78bfa);
+    width: 100%;
+    transform-origin: left;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+  }
+  .cell {
+    aspect-ratio: 1;
+    border-radius: 12px;
+    background: #191d26;
+    border: 1px solid #232a35;
+    position: relative;
+    overflow: hidden;
+  }
+  .dot {
+    position: absolute;
+    inset: 4px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    cursor: pointer;
+    animation: pop 160ms ease-out;
+    box-shadow: 0 0 18px 2px var(--glow, transparent);
+  }
+  @keyframes pop {
+    from { transform: scale(0.3); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+  .dot.gone {
+    animation: fadeout 140ms ease-in forwards;
+  }
+  @keyframes fadeout {
+    to { transform: scale(1.4); opacity: 0; }
+  }
+  .lede { font-size: 14px; color: #c3cbd8; line-height: 1.7; margin: 0 0 18px 0; text-align: center; }
+  .lede b { color: #f4f6f8; }
+  .rule {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: #c3cbd8;
+    margin-bottom: 10px;
+  }
+  .swatch { width: 18px; height: 18px; border-radius: 5px; flex-shrink: 0; }
+  .btn {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(90deg,#2dd4bf,#a78bfa);
+    border: none;
+    color: #0a0c10;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+    border-radius: 10px;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn.ghost {
+    background: transparent;
+    border: 1px solid #3a4658;
+    color: #f4f6f8;
+  }
+  .avatar-wrap { display: flex; justify-content: center; margin-bottom: 16px; }
+  #avatarCanvas { image-rendering: pixelated; border-radius: 14px; border: 1px solid #232a35; }
+  .hidden { display: none; }
+  .footer { margin-top: 16px; font-size: 11px; color: #4a5566; text-align: center; }
+  .flash {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 120ms ease;
+    z-index: 5;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <h1>SNARKPOP</h1>
+    <div class="stat"><div class="label">score</div><div class="value" id="scoreVal">0</div></div>
+  </div>
+  <p class="subtitle">tap the shielded signals before they fade &middot; dodge the red trackers</p>
+
+  <div class="console">
+
+    <div id="screen-intro">
+      <p class="lede">Colorful signals flash on the grid.<br><b>Tap them fast</b> to collect points.</p>
+      <div class="rule"><div class="swatch" style="background:#2dd4bf;"></div> tap it — +10 points</div>
+      <div class="rule"><div class="swatch" style="background:#ff5f7e;"></div> a tracker — don't tap it</div>
+      <button class="btn" id="startBtn">start</button>
+    </div>
+
+    <div id="screen-game" class="hidden">
+      <div class="timerbar"><div class="timerbar-fill" id="timerFill"></div></div>
+      <div class="grid" id="grid"></div>
+    </div>
+
+    <div id="screen-end" class="hidden">
+      <div class="avatar-wrap"><canvas id="avatarCanvas" width="220" height="220"></canvas></div>
+      <p class="lede">your encrypted identity<br><b id="finalScore"></b></p>
+      <button class="btn" id="retryBtn">play again</button>
+    </div>
+
+  </div>
+  <div class="footer">fan project, unaffiliated with any protocol team</div>
+</div>
+<div class="flash" id="flash"></div>
+
+<script>
+(function(){
+  var GRID_N = 5;
+  var TOTAL_CELLS = GRID_N * GRID_N;
+  var GAME_MS = 30000;
+  var SPAWN_MS = 620;
+  var LIFE_MS = 950;
+  var GOOD_COLORS = ['#2dd4bf', '#a78bfa', '#facc4d', '#4da3f4', '#a8e05a', '#f472b6'];
+  var BAD_COLOR = '#ff5f7e';
+
+  var score = 0;
+  var occupied = {};
+  var spawnHandle = null;
+  var endHandle = null;
+  var running = false;
+
+  var gridEl = document.getElementById('grid');
+  var scoreVal = document.getElementById('scoreVal');
+  var timerFill = document.getElementById('timerFill');
+  var flashEl = document.getElementById('flash');
+
+  function buildGrid(){
+    gridEl.innerHTML = '';
+    for (var i = 0; i < TOTAL_CELLS; i++){
+      var c = document.createElement('div');
+      c.className = 'cell';
+      c.dataset.index = i;
+      gridEl.appendChild(c);
+    }
+  }
+
+  function cellEl(i){ return gridEl.children[i]; }
+
+  function emptyCells(){
+    var out = [];
+    for (var i = 0; i < TOTAL_CELLS; i++) if (!occupied[i]) out.push(i);
+    return out;
+  }
+
+  function spawnDot(){
+    var free = emptyCells();
+    if (free.length === 0) return;
+    var idx = free[Math.floor(Math.random() * free.length)];
+    var isBad = Math.random() < 0.18;
+    var color = isBad ? BAD_COLOR : GOOD_COLORS[Math.floor(Math.random() * GOOD_COLORS.length)];
+
+    occupied[idx] = true;
+    var dot = document.createElement('div');
+    dot.className = 'dot';
+    dot.style.background = color;
+    dot.style.setProperty('--glow', color);
+    var cell = cellEl(idx);
+    cell.appendChild(dot);
+
+    var resolved = false;
+    dot.addEventListener('click', function(){
+      if (resolved) return;
+      resolved = true;
+      if (isBad){
+        score = Math.max(0, score - 5);
+        flashScreen('#ff5f7e');
+      } else {
+        score += 10;
+        flashScreen(color, true);
+      }
+      scoreVal.textContent = score;
+      removeDot(dot, idx);
+    });
+
+    setTimeout(function(){
+      if (resolved) return;
+      resolved = true;
+      removeDot(dot, idx);
+    }, LIFE_MS);
+  }
+
+  function removeDot(dot, idx){
+    dot.classList.add('gone');
+    setTimeout(function(){
+      if (dot.parentNode) dot.parentNode.removeChild(dot);
+      delete occupied[idx];
+    }, 150);
+  }
+
+  function flashScreen(color, soft){
+    flashEl.style.background = 'radial-gradient(circle, ' + color + (soft ? '22' : '33') + ' 0%, transparent 70%)';
+    flashEl.style.opacity = '1';
+    setTimeout(function(){ flashEl.style.opacity = '0'; }, 140);
+  }
+
+  function startGame(){
+    score = 0;
+    occupied = {};
+    scoreVal.textContent = '0';
+    document.getElementById('screen-intro').classList.add('hidden');
+    document.getElementById('screen-end').classList.add('hidden');
+    document.getElementById('screen-game').classList.remove('hidden');
+    buildGrid();
+    running = true;
+
+    timerFill.style.transition = 'none';
+    timerFill.style.transform = 'scaleX(1)';
+    void timerFill.offsetWidth;
+    timerFill.style.transition = 'transform ' + GAME_MS + 'ms linear';
+    timerFill.style.transform = 'scaleX(0)';
+
+    spawnHandle = setInterval(spawnDot, SPAWN_MS);
+    spawnDot();
+    endHandle = setTimeout(endGame, GAME_MS);
+  }
+
+  function endGame(){
+    running = false;
+    clearInterval(spawnHandle);
+    clearTimeout(endHandle);
+    document.getElementById('screen-game').classList.add('hidden');
+    document.getElementById('screen-end').classList.remove('hidden');
+    document.getElementById('finalScore').textContent = score + ' points';
+    drawAvatar();
+  }
+
+  document.getElementById('startBtn').addEventListener('click', startGame);
+  document.getElementById('retryBtn').addEventListener('click', startGame);
+
+  function drawAvatar(){
+    var canvas = document.getElementById('avatarCanvas');
+    var ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    var size = 8;
+    var scale = canvas.width / size;
+    var half = size / 2;
+    ctx.fillStyle = '#0a0c10';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    var map = [];
+    for (var y = 0; y < size; y++){
+      map[y] = [];
+      for (var x = 0; x < half; x++){
+        var draw = Math.random() > 0.4;
+        map[y][x] = draw ? GOOD_COLORS[Math.floor(Math.random() * GOOD_COLORS.length)] : null;
+      }
+    }
+    for (var y = 0; y < size; y++){
+      for (var x = 0; x < size; x++){
+        var srcX = x < half ? x : (size - 1 - x);
+        var color = map[y][srcX];
+        if (color){
+          ctx.fillStyle = color;
+          ctx.fillRect(x * scale, y * scale, scale, scale);
+        }
+      }
+    }
+  }
+})();
+</script>
+</body>
+</html>
